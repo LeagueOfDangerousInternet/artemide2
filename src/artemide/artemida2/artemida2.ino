@@ -38,6 +38,10 @@ void loop() {
     if (!sound.playing()) {
       sound.tones(interstellar_theme);
     }
+    /***
+     * добавлию тут картинку под менюшку
+     */
+    arduboy.drawBitmap(0, 0, intro_image, 128, 64, WHITE);
     arduboy.drawRect(0, 0, 128, 64, WHITE);
     arduboy.setCursor(35, 10);
     arduboy.print("ARTEMIDA 2");
@@ -122,6 +126,7 @@ void loop() {
       }
     }
   } else if (gameState == 2) {
+    arduboy.drawBitmap(0, 0, intro_image, 128, 64, WHITE);
     arduboy.setCursor(20, 25);
     arduboy.print("GAME OVER / BYE!");
     arduboy.setCursor(15, 45);
