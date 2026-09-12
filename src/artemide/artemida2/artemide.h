@@ -1,6 +1,7 @@
 #ifndef artemide_h
 #define artemide_h
 
+#include <ArduboyTones.h> 
 #include <Arduboy2.h>
 #include <avr/pgmspace.h>
 
@@ -141,7 +142,9 @@ const unsigned char intro_image[] PROGMEM = {
 #define NOTE_G5  784
 #define NOTE_GS5 831
 #define NOTE_A5  880
-#define NOTE_AS5 898
+#ifndef NOTE_AS5
+  #define NOTE_AS5 898
+#endif
 #define NOTE_B5  988
 
 #define NOTE_E6  1319
@@ -170,10 +173,4 @@ const uint16_t sound_click[] PROGMEM = {
 const uint16_t sound_start[] PROGMEM = {
   NOTE_C5, 80, NOTE_E5, 80, NOTE_G5, 80, NOTE_C6, 150, NOTE_END
 };
-
-
-
-
-
-
 #endif
