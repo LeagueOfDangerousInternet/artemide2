@@ -8,6 +8,99 @@
 extern const uint8_t block[];
 extern const uint8_t space[];
 
+// Третья октава (для звука урона/взрыва soundDamage)
+#define NOTE_C3  131
+#define NOTE_CS3 139
+#define NOTE_D3  147
+#define NOTE_DS3 156
+#define NOTE_E3  165
+#define NOTE_F3  175
+#define NOTE_FS3 185
+#define NOTE_G3  196
+#define NOTE_GS3 208
+#define NOTE_A3  220
+#define NOTE_AS3 233
+#define NOTE_B3  247
+
+// Четвертая октава (для фоновой музыки)
+#define NOTE_C4  262
+#define NOTE_CS4 277
+#define NOTE_D4  294
+#define NOTE_DS4 311
+#define NOTE_E4  330
+#define NOTE_F4  349
+#define NOTE_FS4 370
+#define NOTE_G4  392
+#define NOTE_GS4 415
+#define NOTE_A4  440
+#define NOTE_AS4 466
+#define NOTE_B4  494
+
+// Пятая октава (для фоновой музыки и прыжка)
+#define NOTE_C5  523
+#define NOTE_CS5 554
+#define NOTE_D5  587
+#define NOTE_DS5 622
+#define NOTE_E5  659
+#define NOTE_F5  698
+#define NOTE_FS5 740
+#define NOTE_G5  784
+#define NOTE_GS5 831
+#define NOTE_A5  880
+#define NOTE_AS5 932
+#define NOTE_B5  988
+
+// Шестая октава (для эффектов лазера и монетки)
+#define NOTE_C6  1047
+#define NOTE_CS6 1109
+#define NOTE_D6  1175
+#define NOTE_DS6 1245
+#define NOTE_E6  1319
+#define NOTE_F6  1397
+#define NOTE_FS6 1480
+#define NOTE_G6  1568
+#define NOTE_GS6 1661
+#define NOTE_A6  1760
+#define NOTE_AS6 1865
+#define NOTE_B6  1976
+
+extern const uint8_t block[];
+
+const uint16_t soundJump[] PROGMEM = {
+  NOTE_C5, 30, NOTE_E5, 30, NOTE_G5, 30, NOTE_C6, 60, TONES_END
+};
+
+const uint16_t soundCoin[] PROGMEM = {
+  NOTE_B5, 60, NOTE_E6, 150, TONES_END
+};
+
+const uint16_t soundDamage[] PROGMEM = {
+  NOTE_G3, 80, NOTE_D3, 80, NOTE_C3, 120, TONES_END
+};
+
+const uint16_t soundLaser[] PROGMEM = {
+  NOTE_A6, 20, NOTE_F6, 20, NOTE_D6, 20, NOTE_B5, 20, TONES_END
+};
+
+const uint16_t backgroundMusic[] PROGMEM = {
+  NOTE_A3, 500,  NOTE_E4, 250,  NOTE_E4, 250,
+  NOTE_C4, 500,  NOTE_E4, 250,  NOTE_E4, 250,
+  NOTE_G3, 500,  NOTE_D4, 250,  NOTE_D4, 250,
+  NOTE_F3, 500,  NOTE_C4, 250,  NOTE_C4, 250,
+
+  NOTE_A3, 500,  NOTE_A4, 250,  NOTE_A4, 250,
+  NOTE_C4, 500,  NOTE_B4, 250,  NOTE_B4, 250,
+  NOTE_G3, 500,  NOTE_C5, 250,  NOTE_C5, 250,
+  NOTE_F3, 500,  NOTE_B4, 250,  NOTE_B4, 250,
+
+  NOTE_A3, 500,  NOTE_E5, 250,  NOTE_E5, 250,
+  NOTE_C4, 500,  NOTE_D5, 250,  NOTE_D5, 250,
+  NOTE_G3, 500,  NOTE_C5, 250,  NOTE_C5, 250,
+  NOTE_F3, 500,  NOTE_B4, 250,  NOTE_A4, 250,
+
+  TONES_REPEAT
+};
+
 const unsigned char intro_image[] PROGMEM = {
   0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x03, 0x00, 0x00, 0x00,
   0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x90, 0x10, 0x02, 0x00,

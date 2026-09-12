@@ -1,7 +1,9 @@
 #include <Arduboy2.h>
+#include <ArduboyTones.h>
 #include "artemide.h"
 
 Arduboy2 arduboy;
+ArduboyTones tones(arduboy.audio.enabled);
 
 bool robotStep = false;
 
@@ -9,6 +11,8 @@ void setup() {
 	arduboy.begin();
   arduboy.setFrameRate(30);
   arduboy.invert(true);
+  arduboy.audio.begin();
+  tones.tones(backgroundMusic); 
 }
 
 void loop() {  
