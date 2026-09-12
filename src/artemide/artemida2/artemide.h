@@ -4,7 +4,7 @@
 #include <ArduboyTones.h> 
 #include <Arduboy2.h>
 #include <avr/pgmspace.h>
-
+#include "music.h"
 #include "blocks.h"
 #include "hero.h"
 #include "level1.h"
