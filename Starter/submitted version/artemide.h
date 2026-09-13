@@ -10,8 +10,6 @@
 #include "hero.h"
 #include "level1.h"
 #include "level2.h"
-// IMPROVEMENT: add the new car-chase finale without altering submitted files.
-#include "level3.h"
 #include "music.h"
 
 

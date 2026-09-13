@@ -1,237 +1,257 @@
+// IMPROVEMENT: the submitted source is preserved in "submitted version".
+// This active entry point adds menus, story cutscenes, failure choices and level 3.
 #include <Arduboy2.h>
 #include "artemide.h"
-#include "obstacles.h"
-#include "cat.h"
+#include "bkup/cat.h"
 
 Arduboy2 arduboy;
-constexpr int16_t GROUND = 56;
-constexpr int16_t PLAYER_X = 20;
-enum GameState : uint8_t { TITLE, RUNNING, CRASHED, TRAVEL };
-enum Hazard : uint8_t { BUG, CLOUD, ROCKET };
-GameState gameState = TITLE;
-Hazard hazard = BUG;
-int16_t obstacleX = 140;
-int16_t heightQ = 0;  // Quarter-pixel jump height above the ground.
-int16_t velocityQ = 0;
-uint16_t score = 0;
-uint16_t best = 0;    // Best score for this power-on session.
-uint16_t runFrame = 0;
-uint16_t level = 1;
-uint8_t levelPoints = 0;
-uint16_t travelFrame = 0;
-bool sitting = false;
-bool scored = false;
+ArduboyTones tones(arduboy.audio.enabled);
+hero player;
 
-// Gradually approach 6 pixels/frame, keeping later levels playable.
-uint16_t speedQ() {
-  return 1536 - 1024 * 8UL / (level + 7UL);
-}
-uint16_t movementRemainder = 0;
+uint8_t time = 0;
+uint8_t time_buf = 0;
+uint8_t status = 0;
+uint8_t height = 48;
+uint8_t currentLevel = 1;
 
-void beginTravel() {
-  gameState = TRAVEL;
-  travelFrame = level == 1 ? 60 : 0;
-  heightQ = velocityQ = 0;
-  sitting = false;
+// IMPROVEMENT: scenes wrap the submitted level modules without modifying their
+// public state contract (0 running, 1 won, 2 lost).
+enum AppScene : uint8_t {
+  START_MENU, INTRO_STORY, PLAY_LEVEL, LEVEL1_END, LEVEL2_START,
+  LEVEL2_END, PLAY_LEVEL3, FINAL_END, FAIL_MENU
+};
+AppScene scene = START_MENU;
+uint16_t sceneFrame = 0;
+uint8_t failChoice = 0;
+
+static void drawCat(int16_t x, int16_t y) {
+  arduboy.drawBitmap(x, y, space_cat, 16, 16, WHITE);
 }
 
-void landOnLevel() {
-  gameState = RUNNING;
-  obstacleX = 160;
-  hazard = BUG;
-  levelPoints = 0;
-  scored = false;
-  movementRemainder = 0;
-}
-
-void drawRocket(int16_t x, int16_t y, bool flame, bool catShip) {
+// IMPROVEMENT: reusable cat-shaped rocket. The ear fins distinguish it from
+// the robot rocket even on the 128x64 monochrome screen.
+static void drawRocket(int16_t x, int16_t y, bool catRocket, bool flame) {
   arduboy.fillTriangle(x, y, x - 8, y + 10, x + 8, y + 10, WHITE);
-  arduboy.drawRect(x - 8, y + 10, 17, 21, WHITE);
+  arduboy.drawRect(x - 8, y + 10, 17, 20, WHITE);
   arduboy.drawCircle(x, y + 16, 3, WHITE);
-  // Cat ship has ears on its nose; robot ship has a square hatch.
-  if (catShip) {
-    arduboy.drawLine(x - 5, y + 5, x - 5, y, WHITE);
-    arduboy.drawLine(x + 5, y + 5, x + 5, y, WHITE);
+  if (catRocket) {
+    arduboy.drawLine(x - 6, y + 6, x - 6, y, WHITE);
+    arduboy.drawLine(x + 6, y + 6, x + 6, y, WHITE);
   }
-  arduboy.drawRect(x - 3, y + 23, 7, 8, WHITE);
-  arduboy.fillTriangle(x - 8, y + 23, x - 13, y + 32, x - 8, y + 31, WHITE);
-  arduboy.fillTriangle(x + 8, y + 23, x + 13, y + 32, x + 8, y + 31, WHITE);
-  if (flame) {
-    arduboy.fillTriangle(x - 5, y + 32, x + 5, y + 32,
-                        x, y + 36 + (travelFrame % 4), WHITE);
-  }
+  arduboy.fillTriangle(x - 8, y + 23, x - 13, y + 31, x - 8, y + 29, WHITE);
+  arduboy.fillTriangle(x + 8, y + 23, x + 13, y + 31, x + 8, y + 29, WHITE);
+  if (flame) arduboy.fillTriangle(x - 4, y + 30, x + 4, y + 30,
+                                  x, y + 36 + sceneFrame % 4, WHITE);
 }
 
-void drawTravel() {
-  const uint16_t t = travelFrame;
+// IMPROVEMENT: portal animation used for the transition from level 1 to 2.
+static void drawPortal(int16_t x, int16_t y) {
+  uint8_t pulse = (sceneFrame / 4) % 3;
+  arduboy.drawCircle(x, y, 9 + pulse, WHITE);
+  arduboy.drawCircle(x, y, 5 + pulse, WHITE);
+  arduboy.drawPixel(x, y, WHITE);
+}
+
+// IMPROVEMENT: simple vehicles for the level 2 ending and driving finale.
+static void drawCar(int16_t x, int16_t y) {
+  arduboy.drawRect(x, y + 5, 25, 8, WHITE);
+  arduboy.drawRect(x + 5, y, 13, 6, WHITE);
+  arduboy.drawCircle(x + 5, y + 14, 3, WHITE);
+  arduboy.drawCircle(x + 20, y + 14, 3, WHITE);
+}
+static void drawBike(int16_t x, int16_t y) {
+  arduboy.drawCircle(x, y + 9, 4, WHITE);
+  arduboy.drawCircle(x + 14, y + 9, 4, WHITE);
+  arduboy.drawLine(x, y + 9, x + 6, y + 2, WHITE);
+  arduboy.drawLine(x + 6, y + 2, x + 14, y + 9, WHITE);
+  arduboy.drawLine(x, y + 9, x + 10, y + 9, WHITE);
+}
+
+static void beginScene(AppScene next) {
+  scene = next;
+  sceneFrame = 0;
+}
+
+static void beginLevel(uint8_t number) {
+  currentLevel = number;
+  if (number == 1) level1Init(player);
+  else if (number == 2) level2Init(player);
+  else level3Init(player);
+  beginScene(number == 3 ? PLAY_LEVEL3 : PLAY_LEVEL);
+}
+
+// IMPROVEMENT: opening story: cat boards and launches, robot reacts and follows,
+// then the cat lands and runs across the first level.
+static void drawIntro() {
+  arduboy.drawFastHLine(0, 56, 128, WHITE);
+  if (sceneFrame < 70) {
+    arduboy.setCursor(21, 2); arduboy.print(F("A CAT ON MARS?"));
+    drawRocket(105, 22, true, false);
+    drawCat(10 + sceneFrame, 40);
+  }
+  else if (sceneFrame < 125) {
+    arduboy.setCursor(24, 2); arduboy.print(F("THE CAT ESCAPES!"));
+    drawRocket(105, 22 - (sceneFrame - 70) * 2, true, true);
+  }
+  else if (sceneFrame < 175) {
+    arduboy.setCursor(12, 2); arduboy.print(F("ROBOT: !!!"));
+    arduboy.drawBitmap(18 + (sceneFrame - 125) / 2, 40,
+      (sceneFrame / 5) % 2 ? man_1 : man_4, 16, 16, WHITE);
+    drawRocket(91, 22, false, false);
+  }
+  else if (sceneFrame < 225) {
+    arduboy.setCursor(15, 2); arduboy.print(F("START THE CHASE!"));
+    drawRocket(91, 22 - (sceneFrame - 175) * 2, false, true);
+  }
+  else {
+    arduboy.setCursor(15, 2); arduboy.print(F("LEVEL 1: LANDED"));
+    drawRocket(18, 22, true, false);
+    drawCat(20 + (sceneFrame - 225) * 2, 40);
+  }
+  if (++sceneFrame >= 275) beginLevel(1);
+}
+
+// IMPROVEMENT: level 1 ending: reunion, distraction, portal escape and pursuit.
+static void drawLevel1End() {
+  arduboy.drawFastHLine(0, 56, 128, WHITE);
   arduboy.setCursor(0, 0);
-  if (t < 30) arduboy.print(F("THERE'S THE CAT!"));
-  else if (t < 60) arduboy.print(F("GOT YOU!"));
-  else if (t < 100) arduboy.print(level == 1 ? F("CAT IS ESCAPING!") : F("HEY! COME BACK!"));
-  else if (t < 135) arduboy.print(F("NOT AGAIN..."));
-  else if (t < 220) arduboy.print(F("AFTER THAT CAT!"));
-  else arduboy.print(F("THE CHASE CONTINUES"));
-  arduboy.setCursor(0, 9);
-  arduboy.print(F("LEVEL "));
-  arduboy.print(level);
-  arduboy.drawFastHLine(0, GROUND, 128);
-
-  // The cat's separate rocket launches first and never lands with us.
-  if (t < 135) {
-    const int16_t catShipY = t < 100 ? 23 : 23 - (t - 100) * 3;
-    drawRocket(108, catShipY, t >= 100, true);
+  if (sceneFrame < 55) {
+    arduboy.print(F("FOUND YOU!"));
+    arduboy.drawBitmap(35, 40, man_1, 16, 16, WHITE);
+    drawCat(67, 40);
+  } else if (sceneFrame < 100) {
+    arduboy.print(F("LOOK! A SPACE BUG!"));
+    arduboy.drawBitmap(35, 40, man_4, 16, 16, WHITE);
+    drawCat(67 + (sceneFrame - 55), 40);
+  } else if (sceneFrame < 145) {
+    arduboy.print(F("CAT: BYE!"));
+    drawPortal(103, 42);
+    drawCat(67 + (sceneFrame - 100), 40);
+  } else {
+    arduboy.print(F("FOLLOW THAT CAT!"));
+    drawPortal(103, 42);
+    arduboy.drawBitmap(35 + (sceneFrame - 145) * 2, 40,
+      (sceneFrame / 5) % 2 ? man_1 : man_2, 16, 16, WHITE);
   }
-  int16_t rocketY = 23;
-  if (t >= 180 && t < 220) rocketY -= (t - 180) * 3;
-  else if (t >= 220 && t < 260) rocketY -= (260 - t) * 3;
-  drawRocket(64, rocketY, t >= 180 && t < 260, false);
-
-  // Approach and briefly hold the cat; it slips away to its rocket.
-  if (t < 100) {
-    int16_t catX = t < 60 ? 58 : 58 + (t - 60);
-    arduboy.drawBitmap(catX, GROUND - 16, space_cat, 16, 16, WHITE);
-    if (t >= 30 && t < 60) {
-      arduboy.drawLine(54, 47, 62, 47, WHITE);
-      arduboy.drawLine(54, 50, 62, 50, WHITE);
-    }
-  }
-  if (t < 175 || t >= 260) {
-    int16_t robotX = 44;
-    if (t < 30) robotX = PLAYER_X + t * 24 / 30;
-    else if (t >= 135 && t < 175) robotX = 44 + (t - 135) * 12 / 40;
-    else if (t >= 260) robotX = 56 - (t - 260) * 36 / 45;
-    const bool walking = t < 30 || (t >= 135 && t < 175) || t >= 260;
-    arduboy.drawBitmap(robotX, GROUND - 16,
-      walking && (t / 6) % 2 ? man_1 : man_2, 16, 16, WHITE);
-  }
-  if (++travelFrame >= 305) landOnLevel();
+  if (++sceneFrame >= 185) beginScene(LEVEL2_START);
 }
 
-void startRun() {
-  level = 1;
-  levelPoints = 0;
-  beginTravel();
-  hazard = BUG;
-  obstacleX = 140;
-  heightQ = velocityQ = 0;
-  score = runFrame = 0;
-  sitting = scored = false;
+// IMPROVEMENT: the cat exits the portal and runs left-to-right before level 2.
+static void drawLevel2Start() {
+  arduboy.drawFastHLine(0, 56, 128, WHITE);
+  arduboy.setCursor(13, 0); arduboy.print(F("LEVEL 2: DEEP SPACE"));
+  drawPortal(12, 42);
+  drawCat(14 + sceneFrame * 2, 40);
+  if (++sceneFrame >= 55) beginLevel(2);
 }
 
-int16_t obstacleY() {
-  // The cloud's bottom is one pixel above the seated antenna.
-  return hazard == CLOUD ? 28 : GROUND - 16;
-}
-
-void updateRun() {
-  ++runFrame;
-  sitting = heightQ == 0 &&
-    (arduboy.pressed(A_BUTTON) || arduboy.pressed(DOWN_BUTTON));
-  if (heightQ == 0 && !sitting &&
-      (arduboy.justPressed(B_BUTTON) || arduboy.justPressed(UP_BUTTON))) {
-    velocityQ = 17;
-  }
-  if (velocityQ != 0 || heightQ > 0) {
-    heightQ += velocityQ;
-    --velocityQ;
-    if (heightQ <= 0) {
-      heightQ = velocityQ = 0;
-    }
-  }
-
-  movementRemainder += speedQ();
-  obstacleX -= movementRemainder / 256;
-  movementRemainder %= 256;
-  const int16_t playerY = GROUND - 16 - heightQ / 4;
-  // Slightly inset body bounds are forgiving around antennas and debris.
-  const int16_t playerTop = playerY + (sitting ? 3 : 1);
-  const int16_t obstacleTop = obstacleY() + 1;
-  const bool overlapX = PLAYER_X + 13 > obstacleX + 2 &&
-                        PLAYER_X + 3 < obstacleX + 14;
-  const bool overlapY = playerY + 16 > obstacleTop &&
-                        playerTop < obstacleY() + 15;
-  if (overlapX && overlapY) {
-    gameState = CRASHED;
-    return;
-  }
-  if (!scored && obstacleX + 16 < PLAYER_X) {
-    scored = true;
-    ++score;
-    if (score > best) best = score;
-    if (++levelPoints == 25) {
-      ++level;
-      beginTravel();
-      return;
-    }
-  }
-  if (obstacleX < -16) {
-    obstacleX = 140 + random(0, 25);
-    // Introduce each obstacle in order, then mix them.
-    hazard = score < 3 ? static_cast<Hazard>(score % 3) :
-                        static_cast<Hazard>(random(0, 3));
-    scored = false;
-  }
-}
-
-void drawRun() {
+// IMPROVEMENT: level 2 ending introduces the bicycle and car used by the chase.
+static void drawLevel2End() {
+  arduboy.drawFastHLine(0, 58, 128, WHITE);
   arduboy.setCursor(0, 0);
-  arduboy.print(F("L"));
-  arduboy.print(level);
-  arduboy.print(F(" "));
-  arduboy.print(levelPoints);
-  arduboy.print(F("/25"));
-  arduboy.setCursor(96, 0);
-  arduboy.print(hazard == CLOUD ? F("DUCK") : F("JUMP"));
-  // Sparse scrolling stars and a lunar surface.
-  for (uint8_t i = 0; i < 9; ++i) {
-    const uint8_t x = (i * 29 + 128 - (runFrame / 3) % 128) % 128;
-    arduboy.drawPixel(x, 12 + (i * 7) % 21);
+  if (sceneFrame < 50) {
+    arduboy.print(F("CAUGHT YOU AGAIN!"));
+    arduboy.drawBitmap(25, 42, man_1, 16, 16, WHITE);
+    drawCat(55, 42); drawBike(82, 44); drawCar(99, 41);
+  } else if (sceneFrame < 110) {
+    arduboy.print(F("CAT TAKES THE BIKE!"));
+    drawCat(55 + sceneFrame - 50, 34);
+    drawBike(55 + sceneFrame - 50, 44);
+    drawCar(92, 41);
+  } else {
+    arduboy.print(F("ROBOT TAKES THE CAR!"));
+    drawCar(25 + (sceneFrame - 110) * 2, 41);
   }
-  arduboy.drawFastHLine(0, GROUND, 128);
-  for (uint8_t i = 0; i < 8; ++i) {
-    arduboy.drawPixel((i * 19 + 128 - runFrame % 128) % 128, 60);
+  if (++sceneFrame >= 160) beginLevel(3);
+}
+
+// IMPROVEMENT: final reunion ends the three-level story.
+static void drawEnding() {
+  arduboy.setCursor(21, 2); arduboy.print(F("CHASE COMPLETE"));
+  arduboy.drawFastHLine(0, 56, 128, WHITE);
+  drawCar(15, 40);
+  drawCat(86, 40);
+  arduboy.drawBitmap(61, 40, man_1, 16, 16, WHITE);
+  arduboy.setCursor(20, 20); arduboy.print(F("FRIENDS AT LAST!"));
+  arduboy.setCursor(19, 58); arduboy.print(F("A: MAIN MENU"));
+  if (arduboy.justPressed(A_BUTTON)) beginScene(START_MENU);
+}
+
+// IMPROVEMENT: failure menu supports retrying the current level or resetting
+// the full story. It replaces the submitted one-action retry prompt.
+static void drawFailMenu() {
+  arduboy.setCursor(31, 5); arduboy.print(F("MISSION FAILED"));
+  if (arduboy.justPressed(UP_BUTTON) || arduboy.justPressed(DOWN_BUTTON))
+    failChoice ^= 1;
+  arduboy.setCursor(20, 27);
+  arduboy.print(failChoice == 0 ? F("> RETRY LEVEL") : F("  RETRY LEVEL"));
+  arduboy.setCursor(20, 39);
+  arduboy.print(failChoice == 1 ? F("> RESET STORY") : F("  RESET STORY"));
+  arduboy.setCursor(13, 55); arduboy.print(F("A/B: SELECT"));
+  if (arduboy.justPressed(A_BUTTON) || arduboy.justPressed(B_BUTTON)) {
+    if (failChoice == 0) beginLevel(currentLevel);
+    else beginScene(START_MENU);
   }
-  const uint8_t *sprite = hazard == BUG ? bug_alien :
-                          hazard == CLOUD ? dead_pixel_cloud : broken_rocket;
-  arduboy.drawBitmap(obstacleX, obstacleY(), sprite, 16, 16, WHITE);
-  const uint8_t *robot = sitting ? man_sit :
-    (heightQ > 0 || (runFrame / 6) % 2 == 0 ? man_1 : man_2);
-  arduboy.drawBitmap(PLAYER_X, GROUND - 16 - heightQ / 4, robot, 16, 16, WHITE);
 }
 
 void setup() {
   arduboy.begin();
   arduboy.setFrameRate(30);
-  arduboy.initRandomSeed();
+  arduboy.invert(true);
+  arduboy.audio.begin();
+  tones.tones(interstellar);
 }
 
 void loop() {
   if (!arduboy.nextFrame()) return;
   arduboy.pollButtons();
   arduboy.clear();
-  if (gameState == TITLE) {
-    arduboy.setCursor(25, 2);
-    arduboy.print(F("COSMIC CAT"));
-    arduboy.setCursor(0, 16);
-    arduboy.print(F("UP/B: jump\nDOWN/A: sit\nChase the space cat\n25 points per level"));
-    arduboy.setCursor(16, 56);
-    arduboy.print(F("B: START MISSION"));
-    if (arduboy.justPressed(B_BUTTON)) startRun();
-  } else {
-    if (gameState == RUNNING) updateRun();
-    if (gameState == TRAVEL) drawTravel();
-    else drawRun();
-    if (gameState == CRASHED) {
-      arduboy.fillRect(8, 15, 112, 33, BLACK);
-      arduboy.drawRect(8, 15, 112, 33, WHITE);
-      arduboy.setCursor(28, 19);
-      arduboy.print(F("ROBOT DOWN!"));
-      arduboy.setCursor(20, 29);
-      arduboy.print(F("BEST "));
-      arduboy.print(best);
-      arduboy.setCursor(20, 39);
-      arduboy.print(F("B: TRY AGAIN"));
-      if (arduboy.justPressed(B_BUTTON)) startRun();
+  ++time;
+  time_buf = time % 60;
+
+  // IMPROVEMENT: a real starting menu now gates the story.
+  if (scene == START_MENU) {
+    arduboy.setCursor(26, 5); arduboy.print(F("COSMIC CAT"));
+    arduboy.setCursor(17, 20); arduboy.print(F("A ROBOT ADVENTURE"));
+    drawCat(13, 38);
+    arduboy.drawBitmap(99, 38, man_1, 16, 16, WHITE);
+    arduboy.setCursor(31, 56); arduboy.print(F("A: START"));
+    if (arduboy.justPressed(A_BUTTON) || arduboy.justPressed(B_BUTTON))
+      beginScene(INTRO_STORY);
+  }
+  else if (scene == INTRO_STORY) drawIntro();
+  else if (scene == LEVEL1_END) drawLevel1End();
+  else if (scene == LEVEL2_START) drawLevel2Start();
+  else if (scene == LEVEL2_END) drawLevel2End();
+  else if (scene == FINAL_END) drawEnding();
+  else if (scene == FAIL_MENU) drawFailMenu();
+  else {
+    // IMPROVEMENT: preserve the submitted status-bit controls for levels 1/2.
+    status = 0;
+    if (arduboy.pressed(DOWN_BUTTON)) status |= 1;
+    if (arduboy.justPressed(UP_BUTTON)) status |= 2;
+    if (arduboy.pressed(RIGHT_BUTTON)) status |= 4;
+    if (arduboy.pressed(LEFT_BUTTON)) status |= 8;
+    player.update(status);
+
+    if (scene == PLAY_LEVEL3) {
+      level3Update(player);
+      level3Draw(player);
+      uint8_t s = level3State();
+      if (s == L3_WON) beginScene(FINAL_END);
+      else if (s == L3_LOST) { failChoice = 0; beginScene(FAIL_MENU); }
+    } else if (currentLevel == 1) {
+      level1Update(player);
+      level1Draw(player);
+      uint8_t s = level1State();
+      if (s == 1) beginScene(LEVEL1_END);
+      else if (s == 2) { failChoice = 0; beginScene(FAIL_MENU); }
+    } else {
+      level2Update(player);
+      level2Draw(player);
+      uint8_t s = level2State();
+      if (s == L2_WON) beginScene(LEVEL2_END);
+      else if (s == L2_LOST) { failChoice = 0; beginScene(FAIL_MENU); }
     }
   }
   arduboy.display();

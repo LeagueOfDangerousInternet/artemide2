@@ -16,4 +16,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Index update failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'AVR core installation failed.' }
 & $cli lib install Arduboy2
 if ($LASTEXITCODE -ne 0) { throw 'Arduboy2 installation failed.' }
+# SOUND UPDATE: install the library required by the existing audio headers.
+& $cli lib install ArduboyTones@1.0.3
+if ($LASTEXITCODE -ne 0) { throw 'ArduboyTones installation failed.' }
 & "$PSScriptRoot/build.ps1"

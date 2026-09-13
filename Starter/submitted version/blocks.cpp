@@ -28,15 +28,14 @@ const uint8_t block2[] PROGMEM = {
 
 
 const uint8_t comp[] PROGMEM = {
-  // IMPROVEMENT: angry monitor with horns, glaring eyes, teeth and sharp feet.
-  0b11011110,
-  0b01110011,
   0b00111110,
-  0b01110110,
-  0b01110110,
-  0b00111110,
-  0b01110011,
-  0b11011110
+  0b10111110,
+  0b10101010,
+  0b11110110,
+  0b11111010,
+  0b10100110,
+  0b10111110,
+  0b00111110
 };
 
 
